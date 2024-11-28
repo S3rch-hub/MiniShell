@@ -14,6 +14,7 @@ int main(void) {
             printf("ERROR, se ha producido un error");
             break;
         }
+        printf("hola");
 
     }
 
