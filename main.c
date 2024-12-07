@@ -7,10 +7,34 @@
 
 pid_t act,*pids;
 int i;
+void executeCD(char *directorio) {
+    if (strcmp(directorio,"~")== 0 || strcmp(directorio,"$HOME") == 0) { // Si la entrada es ~ o es $HOME, el directorio es home
+        directorio =getenv("HOME");;
+    }else if (directorio[0] == '~') {
+        char *dir = getenv("HOME"); // Si la entrada empieza por ~ y luego seguido el nombre de otro directorio
+        strcat(dir,directorio+1);
+        directorio = dir;
+    }
+    if (chdir(directorio) == -1) { // Si falla el cambiar de directorio
+        fprintf(stderr, "Error: No se ha encontrado el directorio '%s'\n", directorio);
+    }
+}
+
 
 void executeLine(tline *line){
 
-    int fd[line->ncommands-1][2];
+    if (strcmp(line->commands[0].argv[0],"cd")==0) // Verificar si el comando es cd
+    {
+        char *nuevoDirectorio = line->commands[0].argv[1];
+        if (nuevoDirectorio == NULL) // Si no introduce nada el usuario, el directorio es home
+        {
+            nuevoDirectorio= "~";
+        }
+        executeCD(nuevoDirectorio);
+
+    }
+
+    int fd[line->ncommands-1][2]; // Creamos una matriz de n-1 X 2 para los descriptores de fichero
     for (i=0; i< line->ncommands-1;i++) {
         if (pipe(fd[i])==-1) {
             printf("error al crear el pipe");
