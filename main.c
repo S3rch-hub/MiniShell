@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include "parser.h"
 #include <sys/wait.h>
+#include <fcntl.h>
 
 pid_t act,*pids;
 int i;
@@ -55,6 +56,34 @@ void executeLine(tline *line){
             exit(1);
         }
         if (act==0) {
+            if (line->redirect_input!=NULL) {
+                int in_file = open(line->redirect_input,O_RDONLY);
+                if (in_file==-1) {
+                    fprintf(stderr,"%s",line->redirect_input);
+                    exit(1);
+                }
+                dup2(in_file,STDIN_FILENO);
+                close(in_file);
+            }
+            if (line->redirect_output!=NULL) {
+                int in_file = open(line->redirect_output,O_WRONLY);
+                if (in_file==-1) {
+                    fprintf(stderr,"%s",line->redirect_output);
+                    exit(1);
+                }
+                dup2(in_file,STDOUT_FILENO);
+                close(in_file);
+            }
+            if (line->redirect_error!=NULL) {
+                int in_file = open(line->redirect_error,O_WRONLY);
+                if (in_file==-1) {
+                    fprintf(stderr,"%s",line->redirect_error);
+                    exit(1);
+                }
+                dup2(in_file,STDOUT_FILENO);
+                close(in_file);
+            }
+
             if (line->ncommands>1) {
                 if (i==0) { //primero
                     close(fd[0][0]);
