@@ -6,6 +6,29 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
+// Definimos la estructura para el comando jobs
+typedef struct job{
+    int job_id; // Id del trabajo
+    pid_t pgid; // Id del grupo de procesos
+    char *status; // Estado del proceso (Running, stopped, finished)
+    char *command;
+    struct job *next; // Puntero al siguiente trabajo
+
+}t_Job;
+
+// Creamos la lista de trabajos
+t_Job *jobs_list = NULL;
+
+// Funcion para agregar un proceso a la lista de jobs
+void addJob(pid_t pgid,const char *command,const char *status){
+    static int next_job_id = 1; // Id unico para cada trabajo en mi lista de jobs ( Empieza en 1 y se va incrementando)
+
+}
+
+
+
+
+
 pid_t act,*pids;
 int i;
 void executeCD(char *directorio) {
@@ -17,8 +40,11 @@ void executeCD(char *directorio) {
         directorio = dir;
     }
     if (chdir(directorio) == -1) { // Si falla el cambiar de directorio
+
         fprintf(stderr, "Error: No se ha encontrado el directorio '%s'\n", directorio);
+        fflush(stderr);
     }
+
 }
 
 
@@ -32,8 +58,10 @@ void executeLine(tline *line){
             nuevoDirectorio= "~";
         }
         executeCD(nuevoDirectorio);
+        return ;
 
     }
+
 
     int fd[line->ncommands-1][2]; // Creamos una matriz de n-1 X 2 para los descriptores de fichero
     for (i=0; i< line->ncommands-1;i++) {
@@ -66,7 +94,7 @@ void executeLine(tline *line){
                 close(in_file);
             }
             if (line->redirect_output!=NULL) {
-                int in_file = open(line->redirect_output,O_WRONLY);
+                int in_file = open(line->redirect_output,O_WRONLY | O_CREAT | O_CREAT, 0644);
                 if (in_file==-1) {
                     fprintf(stderr,"%s",line->redirect_output);
                     exit(1);
@@ -75,12 +103,12 @@ void executeLine(tline *line){
                 close(in_file);
             }
             if (line->redirect_error!=NULL) {
-                int in_file = open(line->redirect_error,O_WRONLY);
+                int in_file = open(line->redirect_error,O_WRONLY | O_CREAT | O_TRUNC,0644);
                 if (in_file==-1) {
                     fprintf(stderr,"%s",line->redirect_error);
                     exit(1);
                 }
-                dup2(in_file,STDOUT_FILENO);
+                dup2(in_file,STDERR_FILENO);
                 close(in_file);
             }
 
