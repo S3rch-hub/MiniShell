@@ -19,10 +19,64 @@ typedef struct job{
 // Creamos la lista de trabajos
 t_Job *jobs_list = NULL;
 
+
+// Funcion para mostrar los jobs
+void printJobs() {
+    if (jobs_list != NULL) {
+        t_Job *current = jobs_list;
+        while (current != NULL)
+        {
+            printf("[%d] [%s] [%s]",current->job_id,current->status,current->command );
+            current = current->next;
+        }
+    }
+}
+
 // Funcion para agregar un proceso a la lista de jobs
 void addJob(pid_t pgid,const char *command,const char *status){
     static int next_job_id = 1; // Id unico para cada trabajo en mi lista de jobs ( Empieza en 1 y se va incrementando)
 
+    t_Job *new_job = malloc(sizeof(t_Job)); // Nodo
+    if (new_job == NULL)
+    {
+        perror(" ERROR al crear el nuevo trabajo");
+        exit(EXIT_FAILURE);
+    }
+    new_job->job_id = next_job_id++;
+    new_job->pgid = pgid;
+    new_job->status = strdup(status); // Copiamos el estado del proceso
+    if (new_job->status == NULL)
+    {
+        perror("ERROR al copiar el estado");
+        exit(EXIT_FAILURE);
+    }
+    new_job->command = strdup(command); // Copiamos el comando
+    // Verificar si se ha copiado bien el comando
+    if (new_job->command == NULL)
+    {
+        perror("ERROR al copiar el comando");
+        exit(EXIT_FAILURE);
+    }
+
+    if (jobs_list == NULL) // Si la lista esta vacia
+    {
+        new_job->next = NULL;
+        jobs_list= new_job;
+    }
+    else
+    {
+        new_job->next = jobs_list; // Insertamos el nuevo trabajo en la lista por el principio
+        jobs_list =new_job;
+    }
+
+}
+
+void executeBG(tline *line) {
+    pid_t pid = fork();
+    if (pid == 0)
+    {
+
+    }
 }
 
 
@@ -49,6 +103,10 @@ void executeCD(char *directorio) {
 
 
 void executeLine(tline *line){
+    if (line->background == 1)
+    {
+        executeBG(line);
+    }
 
     if (strcmp(line->commands[0].argv[0],"cd")==0) // Verificar si el comando es cd
     {
@@ -174,6 +232,7 @@ int main(void) {
             continue;
         }
         executeLine(line);
+
 
     }
 
