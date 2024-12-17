@@ -83,8 +83,22 @@ void executeBG(tline *line) {
 
 
 
-pid_t act,*pids;
-int i;
+pid_t act;
+pid_t *pids = NULL;
+int i;   // Variable auxiliar
+
+// Funcion manejador para la señal Ctr+C
+void handle_sig(int sig) {
+    if (pids != NULL) // Si el array tiene hijos, mandamos la señal para que terminen su ejecucion
+    {
+        for (int k =0;pids[k] != 0;k++)
+        {
+            kill(pids[k],SIGINT);
+        }
+    }
+}
+
+
 void executeCD(char *directorio) {
     if (strcmp(directorio,"~")== 0 || strcmp(directorio,"$HOME") == 0) { // Si la entrada es ~ o es $HOME, el directorio es home
         directorio =getenv("HOME");;
@@ -142,6 +156,8 @@ void executeLine(tline *line){
             exit(1);
         }
         if (act==0) {
+            signal(SIGINT,SIG_DFL); // Ver si funciona
+
             if (line->redirect_input!=NULL) {
                 int in_file = open(line->redirect_input,O_RDONLY);
                 if (in_file==-1) {
@@ -213,10 +229,14 @@ void executeLine(tline *line){
     }
 
     free(pids);
+    pids = NULL;
 
 }
 
 int main(void) {
+
+
+    signal(SIGINT,SIG_IGN);
     while (1) {
 
         char buf[1024];
