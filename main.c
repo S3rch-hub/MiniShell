@@ -131,6 +131,7 @@ void executeBG(tline *line) {
 
         if (act == 0) { // Proceso hijo
             signal(SIGINT, SIG_DFL);
+            signal(SIGQUIT,SIG_DFL);
 
             if (line->redirect_input != NULL) {
                 int in_file = open(line->redirect_input, O_RDONLY);
@@ -314,7 +315,8 @@ void executeLine(tline *line){
             exit(1);
         }
         if (act==0) {
-            signal(SIGINT,SIG_DFL); // Ver si funciona
+            signal(SIGINT,SIG_DFL);
+            signal(SIGQUIT,SIG_DFL);
 
             if (line->redirect_input!=NULL) {
                 int in_file = open(line->redirect_input,O_RDONLY);
@@ -395,6 +397,7 @@ int main(void) {
 
 
     signal(SIGINT,SIG_IGN);
+    signal(SIGQUIT,SIG_IGN);
     signal(SIGCHLD,cleanJobs);
     while (1) {
 
