@@ -9,12 +9,15 @@
 // Definimos la estructura para el comando jobs
 typedef struct job{
     int job_id; // Id del trabajo
-    pid_t pgid; // Id del grupo de procesos
+    pid_t pid; // Id del grupo de procesos
     char *status; // Estado del proceso (Running, stopped, finished)
     char *command;
     struct job *next; // Puntero al siguiente trabajo
 
 }t_Job;
+pid_t act;
+pid_t *pids = NULL;
+int i;   // Variable auxiliar
 
 // Creamos la lista de trabajos
 t_Job *jobs_list = NULL;
@@ -26,66 +29,174 @@ void printJobs() {
         t_Job *current = jobs_list;
         while (current != NULL)
         {
-            printf("[%d] [%s] [%s]",current->job_id,current->status,current->command );
+            printf("[%d] %s \t%s\n",current->job_id,current->status,current->command );
             current = current->next;
         }
     }
 }
 
 // Funcion para agregar un proceso a la lista de jobs
-void addJob(pid_t pgid,const char *command,const char *status){
-    static int next_job_id = 1; // Id unico para cada trabajo en mi lista de jobs ( Empieza en 1 y se va incrementando)
+void addJob(tline *line, pid_t pod) {
+    static int current = 1;
+    t_Job *newJob = (t_Job *)malloc(sizeof(t_Job));
+    newJob->job_id = current;
+    newJob->pid = pod;
+    newJob->status = strdup("Running");
 
-    t_Job *new_job = malloc(sizeof(t_Job)); // Nodo
-    if (new_job == NULL)
-    {
-        perror(" ERROR al crear el nuevo trabajo");
-        exit(EXIT_FAILURE);
-    }
-    new_job->job_id = next_job_id++;
-    new_job->pgid = pgid;
-    new_job->status = strdup(status); // Copiamos el estado del proceso
-    if (new_job->status == NULL)
-    {
-        perror("ERROR al copiar el estado");
-        exit(EXIT_FAILURE);
-    }
-    new_job->command = strdup(command); // Copiamos el comando
-    // Verificar si se ha copiado bien el comando
-    if (new_job->command == NULL)
-    {
-        perror("ERROR al copiar el comando");
-        exit(EXIT_FAILURE);
+    // Construir el comando completo como una cadena
+    int total_length = 0;
+    for (int i = 0; i < line->ncommands; i++) {
+        tcommand cmd = line->commands[i];
+        total_length += strlen(cmd.filename) + 1; // Nombre del comando + espacio
+        for (int j = 0; j < cmd.argc; j++) {
+            total_length += strlen(cmd.argv[j]) + 1; // Argumentos + espacio
+        }
     }
 
-    if (jobs_list == NULL) // Si la lista esta vacia
-    {
-        new_job->next = NULL;
-        jobs_list= new_job;
-    }
-    else
-    {
-        new_job->next = jobs_list; // Insertamos el nuevo trabajo en la lista por el principio
-        jobs_list =new_job;
-    }
+    // Reservar memoria para la cadena completa
+    char *command = (char *)malloc(total_length + 1);
+    command[0] = '\0'; // Inicializar la cadena vacía
 
+    // Concatenar cada comando y sus argumentos
+    for (int i = 0; i < line->ncommands; i++) {
+        tcommand cmd = line->commands[i];
+        strcat(command, cmd.filename); // Añadir el nombre del comando
+        strcat(command, " "); // Añadir un espacio
+        for (int j = 0; j < cmd.argc; j++) {
+            strcat(command, cmd.argv[j]); // Añadir cada argumento
+            strcat(command, " "); // Añadir un espacio
+        }
+        if (i < line->ncommands - 1) {
+            strcat(command, "| "); // Añadir un símbolo de pipe si no es el último comando
+        }
+    }
+    newJob->command = command;
+    newJob->next = jobs_list;
+    jobs_list = newJob;
+    current++;
 }
+
 
 void executeBG(tline *line) {
-    pid_t pid = fork();
-    if (pid == 0)
-    {
+    pid_t *process_pids = malloc(sizeof(pid_t) * line->ncommands);
+    int fd[line->ncommands - 1][2]; // Creamos una matriz de n-1 X 2 para los descriptores de fichero
 
+    for (i = 0; i < line->ncommands - 1; i++) {
+        if (pipe(fd[i]) == -1) {
+            perror("Error al crear el pipe");
+            exit(1);
+        }
     }
+
+    for (i = 0; i < line->ncommands; i++) {
+        act = fork();
+        if (act == -1) {
+            perror("Error al crear hijo");
+            free(process_pids);
+            exit(1);
+        }
+
+        if (act == 0) { // Proceso hijo
+            signal(SIGINT, SIG_DFL);
+
+            if (line->redirect_input != NULL) {
+                int in_file = open(line->redirect_input, O_RDONLY);
+                if (in_file == -1) {
+                    perror(line->redirect_input);
+                    exit(1);
+                }
+                dup2(in_file, STDIN_FILENO);
+                close(in_file);
+            }
+            if (line->redirect_output != NULL) {
+                int out_file = open(line->redirect_output, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                if (out_file == -1) {
+                    perror(line->redirect_output);
+                    exit(1);
+                }
+                dup2(out_file, STDOUT_FILENO);
+                close(out_file);
+            }
+
+            if (line->ncommands > 1) {
+                if (i == 0) { // Primer comando
+                    close(fd[0][0]);
+                    dup2(fd[0][1], STDOUT_FILENO);
+                    close(fd[0][1]);
+                } else if (i == line->ncommands - 1) { // Último comando
+                    close(fd[i - 1][1]);
+                    dup2(fd[i - 1][0], STDIN_FILENO);
+                    close(fd[i - 1][0]);
+                } else { // Comandos intermedios
+                    close(fd[i - 1][1]);
+                    close(fd[i][0]);
+                    dup2(fd[i - 1][0], STDIN_FILENO);
+                    dup2(fd[i][1], STDOUT_FILENO);
+                    close(fd[i][1]);
+                    close(fd[i - 1][0]);
+                }
+            }
+
+            execvp(line->commands[i].argv[0], line->commands[i].argv);
+            perror("Error al ejecutar el comando");
+            exit(1);
+        }
+
+        if (act > 0) {
+            process_pids[i] = act; // Guardar el PID del hijo
+        }
+    }
+
+    for (i = 0; i < line->ncommands - 1; i++) {
+        close(fd[i][0]);
+        close(fd[i][1]);
+    }
+
+    addJob(line, process_pids[0]);
+    free(process_pids);
 }
 
 
 
 
+void fg(int id) {
 
-pid_t act;
-pid_t *pids = NULL;
-int i;   // Variable auxiliar
+    t_Job *current = jobs_list;
+    t_Job *previous = NULL;
+    if (id == -1) {
+        if (current == NULL) {
+            fprintf(stderr, "fg: No hay jobs en segundo plano\n");
+            return;
+        }
+    }
+    else {
+        while (current != NULL) {
+            if (current->job_id == id) {
+                break;
+            }
+            previous = current;
+            current = current->next;
+        }
+        if (current == NULL) {
+            fprintf(stderr, "fg: No existe el job con ID %d\n", id);
+            return;
+        }
+    }
+    kill(current->pid,SIGCONT);
+    waitpid(current->pid,NULL,0);
+    if (previous == NULL) {
+        jobs_list = current->next;
+    }
+    else {
+        previous->next=current->next;
+    }
+    free(current->command);
+    free(current->status);
+    free(current);
+}
+
+
+
 
 // Funcion manejador para la señal Ctr+C
 void handle_sig(int sig) {
@@ -120,6 +231,20 @@ void executeLine(tline *line){
     if (line->background == 1)
     {
         executeBG(line);
+        return;
+    }
+
+    if (strcmp(line->commands[0].argv[0], "jobs") == 0) {
+        printJobs();
+        return;
+    }
+    if (strcmp(line->commands[0].argv[0], "fg") == 0) {
+        int job_id = -1;
+        if (line->commands[0].argc > 1) {
+            job_id = atoi(line->commands[0].argv[1]);
+        }
+        fg(job_id);
+        return;
     }
 
     if (strcmp(line->commands[0].argv[0],"cd")==0) // Verificar si el comando es cd
