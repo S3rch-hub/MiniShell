@@ -5,11 +5,12 @@
 #include "parser.h"
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <signal.h>
 
 // Definimos la estructura para el comando jobs
 typedef struct job{
     int job_id; // Id del trabajo
-    pid_t pid; // Id del grupo de procesos
+    pid_t pid; // Id del proceso
     char *status; // Estado del proceso (Running, stopped, finished)
     char *command;
     struct job *next; // Puntero al siguiente trabajo
@@ -21,6 +22,36 @@ int i;   // Variable auxiliar
 
 // Creamos la lista de trabajos
 t_Job *jobs_list = NULL;
+
+void cleanJobs(int sig) {
+    pid_t pid;
+    int status;
+
+    while((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        t_Job *current=jobs_list;
+        t_Job *prev=NULL;
+        while (current != NULL) {
+            if (current->pid == pid) {
+
+                if (prev == NULL) {
+                    jobs_list = current->next;
+                } else {
+                    prev->next = current->next;
+                }
+                printf("[%d] done \t%s",current->job_id,current->command);
+                free(current->command);
+                free(current->status);
+                free(current);
+                break;
+            }
+            else {
+                prev = current;
+                current = current->next;
+            }
+
+        }
+    }
+}
 
 
 // Funcion para mostrar los jobs
@@ -362,6 +393,7 @@ int main(void) {
 
 
     signal(SIGINT,SIG_IGN);
+    signal(SIGCHLD,cleanJobs);
     while (1) {
 
         char buf[1024];
