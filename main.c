@@ -15,6 +15,8 @@ typedef struct job{
     char *command;
     struct job *next; // Puntero al siguiente trabajo
 
+
+
 }t_Job;
 pid_t act;
 pid_t *pids = NULL;
