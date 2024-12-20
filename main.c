@@ -25,6 +25,10 @@ int i;   // Variable auxiliar
 // Creamos la lista de trabajos
 t_Job *jobs_list = NULL;
 
+void sigusr_handler(int sig) {
+    exit(0);
+}
+
 void cleanJobs(int sig) {
     pid_t pid;
     int status;
@@ -132,7 +136,8 @@ void executeBG(tline *line) {
 
         if (act == 0) { // Proceso hijo
 
-
+            signal(SIGINT,SIG_IGN);
+            signal(SIGQUIT,SIG_IGN);
             if (line->redirect_input != NULL) {
                 int in_file = open(line->redirect_input, O_RDONLY);
                 if (in_file == -1) {
@@ -193,7 +198,7 @@ void executeBG(tline *line) {
 
 
 
-void fg(int id) {
+void fg(int id,int len) {
 
     t_Job *current = jobs_list;
     t_Job *previous = NULL;
@@ -218,8 +223,8 @@ void fg(int id) {
     }
 
     kill(current->pid,SIGCONT);
-
-
+    pids = malloc(sizeof(pid_t) * len);
+    pids[i]=current->pid;
     int status;
     waitpid(current->pid, &status, WUNTRACED);
 
@@ -241,7 +246,7 @@ void fg(int id) {
 
 void executeCD(char *directorio) {
     if (strcmp(directorio,"~")== 0 || strcmp(directorio,"$HOME") == 0) { // Si la entrada es ~ o es $HOME, el directorio es home
-        directorio =getenv("HOME");;
+        directorio =getenv("HOME");
     }else if (directorio[0] == '~') {
         char *dir = getenv("HOME"); // Si la entrada empieza por ~ y luego seguido el nombre de otro directorio
         strcat(dir,directorio+1);
@@ -272,7 +277,7 @@ void executeLine(tline *line){
         if (line->commands[0].argc > 1) {
             job_id = atoi(line->commands[0].argv[1]);
         }
-        fg(job_id);
+        fg(job_id,line->ncommands);
         return;
     }
 
@@ -388,17 +393,30 @@ void executeLine(tline *line){
 
 }
 
+void handle_sig(int sig) {
+    if (act!=0) {
+        if (pids != NULL) // Si el array tiene hijos, mandamos la señal para que terminen su ejecucion
+        {
+            for (int k =0;pids[k] != 0;k++)
+            {
+                kill(pids[k],SIGUSR1);
+            }
+        }
+    }
+}
+
 int main(void) {
 
 
-    signal(SIGINT,SIG_IGN);
-    signal(SIGQUIT,SIG_IGN);
+    signal(SIGINT,handle_sig);
+    signal(SIGQUIT,handle_sig);
     signal(SIGCHLD,cleanJobs);
+    signal(SIGUSR1,sigusr_handler);
     while (1) {
 
         char buf[1024];
         printf("msh> ");
-
+        i=0;
         if (fgets(buf,1024,stdin) == NULL) {
             printf("ERROR, se ha producido un error");
             break;
