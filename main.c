@@ -40,7 +40,8 @@ void cleanJobs(int sig) {
                 } else {
                     prev->next = current->next;
                 }
-                printf("[%d] done \t%s",current->job_id,current->command);
+                printf("[%d] done \t%s\n",current->job_id,current->command);
+                fflush(stdout);
                 free(current->command);
                 free(current->status);
                 free(current);
@@ -130,8 +131,7 @@ void executeBG(tline *line) {
         }
 
         if (act == 0) { // Proceso hijo
-            signal(SIGINT, SIG_DFL);
-            signal(SIGQUIT,SIG_DFL);
+
 
             if (line->redirect_input != NULL) {
                 int in_file = open(line->redirect_input, O_RDONLY);
@@ -216,8 +216,14 @@ void fg(int id) {
             return;
         }
     }
+
     kill(current->pid,SIGCONT);
-    waitpid(current->pid,NULL,0);
+
+
+    int status;
+    waitpid(current->pid, &status, WUNTRACED);
+
+
     if (previous == NULL) {
         jobs_list = current->next;
     }
@@ -228,7 +234,6 @@ void fg(int id) {
     free(current->status);
     free(current);
 }
-
 
 
 
@@ -282,11 +287,6 @@ void executeLine(tline *line){
         return ;
 
     }
-    if (strcmp(line->commands[0].argv[0],"exit") == 0)
-    {
-        exit(1);
-    }
-
 
 
     int fd[line->ncommands-1][2]; // Creamos una matriz de n-1 X 2 para los descriptores de fichero
@@ -380,7 +380,7 @@ void executeLine(tline *line){
     }
 
     for (i = 0; i < line->ncommands; i++) {
-        wait(NULL);
+        waitpid(pids[i],NULL,0);
     }
 
     free(pids);
