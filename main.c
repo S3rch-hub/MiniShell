@@ -84,7 +84,7 @@ void addJob(tline *line, pid_t pod) {
     newJob->job_id = current;
     newJob->pid = pod;
     newJob->status = strdup("Running");
-    newJob->command = strdup(line->commands->filename); ///probamos a guardartodo el comado entero pero dependiendo de cual habia segmentaion fault, con ls | grep a | wc -l& habia segfault pero con ls | grep a | wc& no
+    newJob->command = strdup(line->commands->filename); //probamos a guardar el comado entero pero dependiendo de cual habia segmentaion fault, con ls | grep a | wc -l& habia segfault pero con ls | grep a | wc& no
     newJob->next = jobs_list;
     jobs_list = newJob;
     current++;
