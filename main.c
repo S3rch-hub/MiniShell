@@ -92,6 +92,7 @@ void addJob(tline *line, pid_t pod) {
 
 
 
+
 void executeBG(tline *line) {
     pid_t *process_pids = malloc(sizeof(pid_t) * line->ncommands);
     if (process_pids == NULL) {
