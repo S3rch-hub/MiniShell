@@ -6,7 +6,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <signal.h>
-
+#include <errno.h>
 // Definimos la estructura para el comando jobs
 typedef struct job{
     int job_id; // Id del trabajo
@@ -77,46 +77,27 @@ void printJobs() {
 void addJob(tline *line, pid_t pod) {
     static int current = 1;
     t_Job *newJob = (t_Job *)malloc(sizeof(t_Job));
+    if (!newJob) {
+        perror("Error allocating memory for new job");
+        return;
+    }
     newJob->job_id = current;
     newJob->pid = pod;
     newJob->status = strdup("Running");
-
-    // Construir el comando completo como una cadena
-    int total_length = 0;
-    for (int i = 0; i < line->ncommands; i++) {
-        tcommand cmd = line->commands[i];
-        total_length += strlen(cmd.filename) + 1; // Nombre del comando + espacio
-        for (int j = 0; j < cmd.argc; j++) {
-            total_length += strlen(cmd.argv[j]) + 1; // Argumentos + espacio
-        }
-    }
-
-    // Reservar memoria para la cadena completa
-    char *command = (char *)malloc(total_length + 1);
-    command[0] = '\0'; // Inicializar la cadena vacía
-
-    // Concatenar cada comando y sus argumentos
-    for (int i = 0; i < line->ncommands; i++) {
-        tcommand cmd = line->commands[i];
-        strcat(command, cmd.filename); // Añadir el nombre del comando
-        strcat(command, " "); // Añadir un espacio
-        for (int j = 0; j < cmd.argc; j++) {
-            strcat(command, cmd.argv[j]); // Añadir cada argumento
-            strcat(command, " "); // Añadir un espacio
-        }
-        if (i < line->ncommands - 1) {
-            strcat(command, "| "); // Añadir un símbolo de pipe si no es el último comando
-        }
-    }
-    newJob->command = command;
+    newJob->command = strdup(line->commands->filename); ///probamos a guardartodo el comado entero pero dependiendo de cual habia segmentaion fault, con ls | grep a | wc -l& habia segfault pero con ls | grep a | wc& no
     newJob->next = jobs_list;
     jobs_list = newJob;
     current++;
 }
 
 
+
 void executeBG(tline *line) {
     pid_t *process_pids = malloc(sizeof(pid_t) * line->ncommands);
+    if (process_pids == NULL) {
+        perror("Error al reservar memoria");
+        return;
+    }
     int fd[line->ncommands - 1][2]; // Creamos una matriz de n-1 X 2 para los descriptores de fichero
 
     for (i = 0; i < line->ncommands - 1; i++) {
@@ -141,7 +122,7 @@ void executeBG(tline *line) {
             if (line->redirect_input != NULL) {
                 int in_file = open(line->redirect_input, O_RDONLY);
                 if (in_file == -1) {
-                    perror(line->redirect_input);
+                    fprintf(stderr, "%s: Error. %s\n", line->redirect_output, strerror(errno));
                     exit(1);
                 }
                 dup2(in_file, STDIN_FILENO);
@@ -150,11 +131,20 @@ void executeBG(tline *line) {
             if (line->redirect_output != NULL) {
                 int out_file = open(line->redirect_output, O_WRONLY | O_CREAT | O_TRUNC, 0644);
                 if (out_file == -1) {
-                    perror(line->redirect_output);
+                    fprintf(stderr, "%s: Error. %s\n", line->redirect_output, strerror(errno));
                     exit(1);
                 }
                 dup2(out_file, STDOUT_FILENO);
                 close(out_file);
+            }
+            if (line->redirect_error!=NULL) {
+                int in_file = open(line->redirect_error,O_WRONLY | O_CREAT | O_TRUNC,0644);
+                if (in_file==-1) {
+                    fprintf(stderr, "%s: Error. %s\n", line->redirect_output, strerror(errno));
+                    exit(1);
+                }
+                dup2(in_file,STDERR_FILENO);
+                close(in_file);
             }
 
             if (line->ncommands > 1) {
@@ -174,6 +164,10 @@ void executeBG(tline *line) {
                     close(fd[i][1]);
                     close(fd[i - 1][0]);
                 }
+                for (int j = 0; j < line->ncommands - 1; j++) { //hay que cerrar todos los pipes en todos los hijos
+                    close(fd[j][0]);
+                    close(fd[j][1]);
+                }
             }
 
             execvp(line->commands[i].argv[0], line->commands[i].argv);
@@ -190,8 +184,10 @@ void executeBG(tline *line) {
         close(fd[i][0]);
         close(fd[i][1]);
     }
+    if (line->commands->filename != NULL) {
+        addJob(line, process_pids[0]);
+    }
 
-    addJob(line, process_pids[0]);
     free(process_pids);
 }
 
@@ -224,6 +220,10 @@ void fg(int id,int len) {
 
     kill(current->pid,SIGCONT);
     pids = malloc(sizeof(pid_t) * len);
+    if (pids == NULL) {
+        perror("Error al asignar memoria");
+        exit(1);
+    }
     pids[i]=current->pid;
     int status;
     waitpid(current->pid, &status, WUNTRACED);
@@ -254,7 +254,7 @@ void executeCD(char *directorio) {
     }
     if (chdir(directorio) == -1) { // Si falla el cambiar de directorio
 
-        fprintf(stderr, "Error: No se ha encontrado el directorio '%s'\n", directorio);
+        fprintf(stderr, "Error: No se puede acceder al directorio '%s'\n", directorio);
         fflush(stderr);
     }
 
@@ -266,6 +266,10 @@ void executeLine(tline *line){
     {
         executeBG(line);
         return;
+    }
+    if (strcmp(line->commands[0].argv[0],"exit") == 0)
+    {
+        exit(1);
     }
 
     if (strcmp(line->commands[0].argv[0], "jobs") == 0) {
@@ -321,7 +325,7 @@ void executeLine(tline *line){
             if (line->redirect_input!=NULL) {
                 int in_file = open(line->redirect_input,O_RDONLY);
                 if (in_file==-1) {
-                    fprintf(stderr,"%s",line->redirect_input);
+                    fprintf(stderr, "%s: Error. %s\n", line->redirect_output, strerror(errno));
                     exit(1);
                 }
                 dup2(in_file,STDIN_FILENO);
@@ -330,7 +334,8 @@ void executeLine(tline *line){
             if (line->redirect_output!=NULL) {
                 int in_file = open(line->redirect_output,O_WRONLY | O_CREAT | O_CREAT, 0644);
                 if (in_file==-1) {
-                    fprintf(stderr,"%s",line->redirect_output);
+                    fprintf(stderr, "%s: Error. %s\n", line->redirect_output, strerror(errno));
+
                     exit(1);
                 }
                 dup2(in_file,STDOUT_FILENO);
@@ -339,7 +344,7 @@ void executeLine(tline *line){
             if (line->redirect_error!=NULL) {
                 int in_file = open(line->redirect_error,O_WRONLY | O_CREAT | O_TRUNC,0644);
                 if (in_file==-1) {
-                    fprintf(stderr,"%s",line->redirect_error);
+                    fprintf(stderr, "%s: Error. %s\n", line->redirect_output, strerror(errno));
                     exit(1);
                 }
                 dup2(in_file,STDERR_FILENO);
@@ -372,7 +377,7 @@ void executeLine(tline *line){
                 }
             }
             execvp(line->commands[i].argv[0],line->commands[i].argv);
-            printf("Error al ejecutar el comando: %s\n",line->commands[i].argv[0]);
+            printf("%s: No se encuentra el mandato\n",line->commands[i].argv[0]);
             exit(1);
         }
         if (act>0) {
@@ -415,6 +420,7 @@ int main(void) {
     while (1) {
 
         char buf[1024];
+        memset(buf, 0, sizeof(buf));
         printf("msh> ");
         i=0;
         if (fgets(buf,1024,stdin) == NULL) {
