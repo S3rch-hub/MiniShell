@@ -232,16 +232,6 @@ void fg(int id) {
 
 
 
-// Funcion manejador para la señal Ctr+C
-void handle_sig(int sig) {
-    if (pids != NULL) // Si el array tiene hijos, mandamos la señal para que terminen su ejecucion
-    {
-        for (int k =0;pids[k] != 0;k++)
-        {
-            kill(pids[k],SIGINT);
-        }
-    }
-}
 
 
 void executeCD(char *directorio) {
@@ -292,6 +282,11 @@ void executeLine(tline *line){
         return ;
 
     }
+    if (strcmp(line->commands[0].argv[0],"exit") == 0)
+    {
+        exit(1);
+    }
+
 
 
     int fd[line->ncommands-1][2]; // Creamos una matriz de n-1 X 2 para los descriptores de fichero
